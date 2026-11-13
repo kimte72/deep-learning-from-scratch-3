@@ -1,6 +1,9 @@
 """
 Simple implementation of Grad-CAM (https://arxiv.org/pdf/1610.02391.pdf)
 """
+if '__file__' in globals():
+    import os, sys
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 import numpy as np
 from PIL import Image
 import cv2

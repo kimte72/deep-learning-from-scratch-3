@@ -78,7 +78,7 @@ def numerical_diff(f, x, eps=1e-4):
 class SquareTest(unittest.TestCase):
     def test_forward(self):
         x = Variable(np.array(2.0))
-        y = square(x)
+        y = square(x) 
         expected = np.array(4.0)
         self.assertEqual(y.data, expected)
 
@@ -96,3 +96,5 @@ class SquareTest(unittest.TestCase):
         num_grad = numerical_diff(square, x)
         flg = np.allclose(x.grad, num_grad)
         self.assertTrue(flg)
+
+unittest.main()

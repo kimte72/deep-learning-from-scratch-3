@@ -89,4 +89,4 @@ print(x.grad)
 
 x = Variable(np.array(1.0))  # OK
 x = Variable(None)  # OK
-x = Variable(1.0)  # NG
+#x = Variable(1.0)  # NG

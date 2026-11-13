@@ -1,10 +1,9 @@
 from setuptools import setup
-from dezero import __version__
 
 setup(name='dezero',
-      version=__version__,
+      version='0.0.13',
       license='MIT License',
-      install_requires=['numpy'],
+      install_requires=['numpy', 'matplotlib', 'pillow'],
       description='Deep Learning Framework from Zero',
       author='Koki Saitoh',
       author_email='koki0702@gmail.com',

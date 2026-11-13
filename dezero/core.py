@@ -36,7 +36,7 @@ try:
     import cupy
     array_types = (np.ndarray, cupy.ndarray)
 except ImportError:
-    array_types = (np.ndarray)
+    array_types = (np.ndarray,)
 
 
 class Variable:
@@ -343,6 +343,7 @@ def setup_variable():
     Variable.__getitem__ = dezero.functions.get_item
 
     Variable.matmaul = dezero.functions.matmul
+    Variable.matmul = dezero.functions.matmul
     Variable.dot = dezero.functions.matmul
     Variable.max = dezero.functions.max
     Variable.min = dezero.functions.min

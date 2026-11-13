@@ -2,8 +2,13 @@ import numpy as np
 try:
     import Image
 except ImportError:
-    from PIL import Image
+    try:
+        from PIL import Image
+    except ImportError:
+        Image = None
 from dezero.utils import pair
+
+_BILINEAR = getattr(Image, 'BILINEAR', getattr(getattr(Image, 'Resampling', None), 'BILINEAR', 2)) if Image is not None else 2
 
 
 class Compose:
@@ -47,7 +52,7 @@ class Resize:
         size (int or (int, int)): Desired output size
         mode (int): Desired interpolation.
     """
-    def __init__(self, size, mode=Image.BILINEAR):
+    def __init__(self, size, mode=_BILINEAR):
         self.size = pair(size)
         self.mode = mode
 

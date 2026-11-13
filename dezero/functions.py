@@ -599,6 +599,9 @@ def batch_nrom(x, gamma, beta, mean, var, decay=0.9, eps=2e-5):
     return BatchNorm(mean, var, decay, eps)(x, gamma, beta)
 
 
+batch_norm = batch_nrom
+
+
 def embed_id(x, W):
     return W[x]
 
