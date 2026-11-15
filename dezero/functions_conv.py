@@ -1,5 +1,6 @@
 import numpy as np
 from dezero import cuda
+import dezero.mlx
 from dezero.core import Function, as_variable
 from dezero.utils import pair, get_conv_outsize, get_deconv_outsize
 from dezero.functions import linear, broadcast_to
@@ -204,10 +205,13 @@ class Pooling2DGrad(Function):
 
         gcol = xp.zeros((N * C * OH * OW * KH * KW), dtype=self.dtype)
 
-        indexes = (self.indexes.ravel()
+        indexes = (self.indexes.flatten()
                    + xp.arange(0, self.indexes.size * KH * KW, KH * KW))
         
-        gcol[indexes] = gy.ravel()
+        if hasattr(gcol, 'at'):
+            gcol = gcol.at[indexes].add(gy.flatten())
+        else:
+            gcol[indexes] = gy.ravel()
         gcol = gcol.reshape(N, C, OH, OW, KH, KW)
         gcol = xp.swapaxes(gcol, 2, 4)
         gcol = xp.swapaxes(gcol, 3, 5)
@@ -236,8 +240,9 @@ class Pooling2DWithIndexes(Function):
         N, C, KH, KW, OH, OW = col.shape
         col = col.reshape(N, C, KH * KW, OH, OW)
         col = col.transpose(0, 1, 3, 4, 2).reshape(-1, KH * KW)
-        indexes = self.indexes.ravel()
-        col = col[np.arange(len(indexes)), indexes]
+        xp = cuda.get_array_module(x)
+        indexes = self.indexes.flatten()
+        col = col[xp.arange(len(indexes)), indexes]
         return col.reshape(N, C, OH, OW)
 
 
@@ -367,7 +372,9 @@ def im2col_array(img, kernel_size, stride, pad, to_matrix=True):
     OW = get_conv_outsize(W, KW, SW, PW)
 
     xp = cuda.get_array_module(img)
-    if xp != np:
+    if xp is dezero.mlx.xp_mlx:
+        col = _im2col_mlx(img, kernel_size, stride, pad)
+    elif xp != np:
         col = _im2col_gpu(img, kernel_size, stride, pad)
     else:
         img = np.pad(img,
@@ -399,7 +406,10 @@ def col2im_array(col, img_shape, kernel_size, stride, pad, to_matrix=True):
         col = col.reshape(N, OH, OW, C, KH, KW).transpose(0, 3, 4, 5, 1, 2)
 
     xp = cuda.get_array_module(col)
-    if xp != np:
+    if xp is dezero.mlx.xp_mlx:
+        img = _col2im_mlx(col, SH, SW, PH, PW, H, W)
+        return img
+    elif xp != np:
         img = _col2im_gpu(col, SH, SW, PH, PW, H, W)
         return img
     else:
@@ -490,3 +500,39 @@ def _col2im_gpu(col, sy, sx, ph, pw, h, w):
         'col2im')(col.reduced_view(),
                   h, w, out_h, out_w, kh, kw, sy, sx, ph, pw, dx, dy, img)
     return img
+
+
+def _im2col_mlx(img, kernel_size, stride, pad):
+    """im2col function for Apple MLX GPU."""
+    mx = dezero.mlx.mx
+    N, C, H, W = img.shape
+    KH, KW = pair(kernel_size)
+    SH, SW = pair(stride)
+    PH, PW = pair(pad)
+    OH = get_conv_outsize(H, KH, SH, PH)
+    OW = get_conv_outsize(W, KW, SW, PW)
+
+    img = mx.pad(img, [(0, 0), (0, 0), (PH, PH + SH - 1), (PW, PW + SW - 1)])
+    rows = []
+    for j in range(KH):
+        j_lim = j + SH * OH
+        cols = []
+        for i in range(KW):
+            i_lim = i + SW * OW
+            cols.append(img[:, :, j:j_lim:SH, i:i_lim:SW])
+        rows.append(mx.stack(cols, axis=2))
+    col = mx.stack(rows, axis=2)
+    return col
+
+
+def _col2im_mlx(col, sy, sx, ph, pw, h, w):
+    """col2im function for Apple MLX GPU."""
+    mx = dezero.mlx.mx
+    N, C, KH, KW, OH, OW = col.shape
+    img = mx.zeros((N, C, h + 2 * ph + sy - 1, w + 2 * pw + sx - 1), dtype=col.dtype)
+    for j in range(KH):
+        j_lim = j + sy * OH
+        for i in range(KW):
+            i_lim = i + sx * OW
+            img = img.at[:, :, j:j_lim:sy, i:i_lim:sx].add(col[:, :, j, i, :, :])
+    return img[:, :, ph:h + ph, pw:w + pw]

@@ -3,6 +3,7 @@ import weakref
 import numpy as np
 import dezero.functions as F
 from dezero import cuda
+import dezero.mlx
 from dezero.core import Parameter
 from dezero.utils import pair
 
@@ -13,6 +14,7 @@ from dezero.utils import pair
 class Layer:
     def __init__(self):
         self._params = set()
+        self._device = 'cpu'
 
     def __setattr__(self, name, value):
         if isinstance(value, (Parameter, Layer)):
@@ -43,13 +45,45 @@ class Layer:
         for param in self.params():
             param.cleargrad()
 
+    def _set_device_recursive(self, device):
+        self._device = device
+        for name in self._params:
+            obj = self.__dict__[name]
+            if isinstance(obj, Layer):
+                obj._set_device_recursive(device)
+
+    def _get_xp(self, x):
+        if self._device == 'mlx' and dezero.mlx.gpu_enable:
+            return dezero.mlx.xp_mlx
+        elif self._device in ('gpu', 'cuda') and cuda.gpu_enable:
+            return cuda.cupy
+        return cuda.get_array_module(x)
+
     def to_cpu(self):
+        self._set_device_recursive('cpu')
         for param in self.params():
             param.to_cpu()
 
     def to_gpu(self):
+        self._set_device_recursive('gpu')
         for param in self.params():
             param.to_gpu()
+
+    def to_mlx(self):
+        self._set_device_recursive('mlx')
+        for param in self.params():
+            param.to_mlx()
+
+    def to_device(self, device='cpu'):
+        device = str(device).lower()
+        if device == 'mlx':
+            self.to_mlx()
+        elif device in ('gpu', 'cuda'):
+            self.to_gpu()
+        elif device == 'cpu':
+            self.to_cpu()
+        else:
+            raise ValueError("Unsupported device: {}. Use 'cpu', 'gpu', or 'mlx'.".format(device))
 
     def _flatten_params(self, params_dict, parent_key=""):
         for name in self._params:
@@ -104,13 +138,14 @@ class Linear(Layer):
 
     def _init_W(self, xp=np):
         I, O = self.in_size, self.out_size
-        W_data = xp.random.randn(I, O).astype(self.dtype) * np.sqrt(1 / I)
+        scale = float(np.sqrt(1 / I))
+        W_data = xp.asarray(xp.random.randn(I, O), dtype=self.dtype) * scale
         self.W.data = W_data
 
     def forward(self, x):
         if self.W.data is None:
             self.in_size = x.shape[1]
-            xp = cuda.get_array_module(x)
+            xp = self._get_xp(x)
             self._init_W(xp)
 
         y = F.linear(x, self.W, self.b)
@@ -152,14 +187,14 @@ class Conv2d(Layer):
     def _init_W(self, xp=np):
         C, OC = self.in_channels, self.out_channels
         KH, KW = pair(self.kernel_size)
-        scale = np.sqrt(1 / (C * KH * KW))
-        W_data = xp.random.randn(OC, C, KH, KW).astype(self.dtype) * scale
+        scale = float(np.sqrt(1 / (C * KH * KW)))
+        W_data = xp.asarray(xp.random.randn(OC, C, KH, KW), dtype=self.dtype) * scale
         self.W.data = W_data
 
     def forward(self, x):
         if self.W.data is None:
             self.in_channels = x.shape[1]
-            xp = cuda.get_array_module(x)
+            xp = self._get_xp(x)
             self._init_W(xp)
 
         y = F.conv2d(x, self.W, self.b, self.stride, self.pad)
@@ -201,14 +236,14 @@ class Deconv2d(Layer):
     def _init_W(self, xp=np):
         C, OC = self.in_channels, self.out_channels
         KH, KW = pair(self.kernel_size)
-        scale = np.sqrt(1 / (C * KH * KW))
-        W_data = xp.random.randn(C, OC, KH, KW).astype(self.dtype) * scale
+        scale = float(np.sqrt(1 / (C * KH * KW)))
+        W_data = xp.asarray(xp.random.randn(C, OC, KH, KW), dtype=self.dtype) * scale
         self.W.data = W_data
 
     def forward(self, x):
         if self.W.data is None:
             self.in_channels = x.shape[1]
-            xp = cuda.get_array_module(x)
+            xp = self._get_xp(x)
             self._init_W(xp)
 
         y = F.deconv2d(x, self.W, self.b, self.stride, self.pad)
@@ -313,7 +348,7 @@ class BatchNorm(Layer):
         self.beta = Parameter(None, name='beta')
 
     def _init_params(self, x):
-        xp = cuda.get_array_module(x)
+        xp = self._get_xp(x)
         D = x.shape[1]
         if self.avg_mean.data is None:
             self.avg_mean.data = xp.zeros(D, dtype=x.dtype)

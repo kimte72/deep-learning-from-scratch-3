@@ -36,6 +36,7 @@ else:
     import dezero.functions_conv
     import dezero.layers
     import dezero.utils
+    import dezero.mlx
     import dezero.cuda
     import dezero.transforms
 

@@ -19,7 +19,7 @@ def rosenbrock(x0, x1):
 x0 = Variable(np.array(0.0))
 x1 = Variable(np.array(2.0))
 lr = 0.001
-iters = 1000
+iters = 10000
 
 for i in range(iters):
     print(x0, x1)

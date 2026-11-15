@@ -114,6 +114,8 @@ class Transpose(Function):
         self.axes = axes
 
     def forward(self, x):
+        if self.axes is None:
+            return x.transpose()
         y = x.transpose(self.axes)
         return y
 
@@ -155,6 +157,8 @@ class GetItemGrad(Function):
 
         if xp is np:
             np.add.at(gx, self.slices, gy)
+        elif hasattr(gx, 'at'):
+            gx = gx.at[self.slices].add(gy)
         else:
             xp.scatter_add(gx, self.slices, gy)
         return gx
@@ -256,7 +260,8 @@ mean = average
 
 class MatMul(Function):
     def forward(self, x, W):
-        y = x.dot(W)
+        xp = cuda.get_array_module(x)
+        y = xp.matmul(x, W)
         return y
 
     def backward(self, gy):
@@ -272,9 +277,10 @@ def matmul(x, W):
 
 class Linear(Function):
     def forward(self, x, W, b):
-        y = x.dot(W)
+        xp = cuda.get_array_module(x)
+        y = xp.matmul(x, W)
         if b is not None:
-            y += b
+            y = y + b
         return y
 
     def backward(self, gy):
@@ -396,14 +402,14 @@ class LeakyReLU(Function):
         self.slope = slope
 
     def forward(self, x):
-        y = x.copy()
-        y[x <= 0] *= self.slope
+        xp = cuda.get_array_module(x)
+        y = xp.where(x <= 0, x * self.slope, x)
         return y
 
     def backward(self, gy):
         x, = self.inputs
-        mask = (x.data > 0).astype(gy.dtype)
-        mask[mask <= 0] = self.slope
+        xp = cuda.get_array_module(x.data)
+        mask = xp.where(x.data > 0, xp.array(1.0, dtype=gy.dtype), xp.array(self.slope, dtype=gy.dtype))
         gx = gy * mask
         return gx
 
@@ -446,18 +452,20 @@ def softmax_cross_entropy_simple(x, t):
     p = softmax(x)
     p = clip(p, 1e-15, 1.0)  # To avoid log(0)
     log_p = log(p)
-    tlog_p = log_p[np.arange(N), t.data]
+    xp = cuda.get_array_module(t.data)
+    tlog_p = log_p[xp.arange(N), t.data]
     y = -1 * sum(tlog_p) / N
     return y
 
 
 class SoftmaxCrossEntropy(Function):
     def forward(self, x, t):
+        xp = cuda.get_array_module(x)
         N = x.shape[0]
         log_z = utils.logsumexp(x, axis=1)
         log_p = x - log_z
-        log_p = log_p[np.arange(N), t.ravel()]
-        y = -log_p.sum() / np.float32(N)
+        log_p = log_p[xp.arange(N), t.flatten()]
+        y = -log_p.sum() / float(N)
         return y
 
     def backward(self, gy):

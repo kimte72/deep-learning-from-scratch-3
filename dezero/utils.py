@@ -120,9 +120,13 @@ def sum_to(x, shape):
     lead_axis = tuple(range(lead))
 
     axis = tuple([i + lead for i, sx in enumerate(shape) if sx == 1])
-    y = x.sum(lead_axis + axis, keepdims=True)
-    if lead > 0:
-        y = y.squeeze(lead_axis)
+    sum_axes = lead_axis + axis
+    if len(sum_axes) > 0:
+        y = x.sum(sum_axes, keepdims=True)
+    else:
+        y = x
+    if lead > 0 or y.shape != shape:
+        y = y.reshape(shape)
     return y
 
 
@@ -162,10 +166,10 @@ def logsumexp(x, axis=1):
     xp = cuda.get_array_module(x)
     m = x.max(axis=axis, keepdims=True)
     y = x - m
-    xp.exp(y, out=y)
+    y = xp.exp(y)
     s = y.sum(axis=axis, keepdims=True)
-    xp.log(s, out=s)
-    m += s
+    s = xp.log(s)
+    m = m + s
     return m
 
 

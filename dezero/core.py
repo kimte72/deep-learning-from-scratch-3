@@ -32,11 +32,18 @@ def test_mode():
 # =============================================================================
 # Variable / Function
 # =============================================================================
+_array_types = [np.ndarray]
 try:
     import cupy
-    array_types = (np.ndarray, cupy.ndarray)
+    _array_types.append(cupy.ndarray)
 except ImportError:
-    array_types = (np.ndarray,)
+    pass
+try:
+    import mlx.core as _mx
+    _array_types.append(_mx.array)
+except ImportError:
+    pass
+array_types = tuple(_array_types)
 
 
 class Variable:
@@ -163,6 +170,21 @@ class Variable:
         if self.data is not None:
             self.data = dezero.cuda.as_cupy(self.data)
 
+    def to_mlx(self):
+        if self.data is not None:
+            self.data = dezero.mlx.as_mlx(self.data)
+
+    def to_device(self, device='cpu'):
+        device = str(device).lower()
+        if device == 'mlx':
+            self.to_mlx()
+        elif device in ('gpu', 'cuda'):
+            self.to_gpu()
+        elif device == 'cpu':
+            self.to_cpu()
+        else:
+            raise ValueError("Unsupported device: {}. Use 'cpu', 'gpu', or 'mlx'.".format(device))
+
 
 class Parameter(Variable):
     pass
@@ -185,6 +207,8 @@ class Function:
         inputs = [as_variable(x) for x in inputs]
 
         xs = [x.data for x in inputs]
+        if any(dezero.mlx.is_mlx_array(x) for x in xs):
+            xs = [dezero.mlx.as_mlx(x) if x is not None else None for x in xs]
         ys = self.forward(*xs)
         if not isinstance(ys, tuple):
             ys = (ys,)

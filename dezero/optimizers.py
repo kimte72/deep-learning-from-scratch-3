@@ -1,5 +1,6 @@
 import math
 from dezero import cuda, Parameter
+import dezero.mlx
 
 
 # =============================================================================
@@ -22,6 +23,13 @@ class Optimizer:
 
         for param in params:
             self.update_one(param)
+
+        if dezero.mlx.gpu_enable:
+            dezero.mlx.eval_arrays(params)
+            for attr in ('vs', 'hs', 'ms', 'msg', 'msdx'):
+                state_dict = getattr(self, attr, None)
+                if isinstance(state_dict, dict):
+                    dezero.mlx.eval_arrays(list(state_dict.values()))
 
     def update_one(self, param):
         raise NotImplementedError()

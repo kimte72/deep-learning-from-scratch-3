@@ -17,8 +17,12 @@ train_loader = DataLoader(train_set, batch_size)
 model = MLP((1000, 10))
 optimizer = optimizers.SGD().setup(model)
 
-# GPU mode
-if dezero.cuda.gpu_enable:
+# Device mode: 'mlx' (Apple Silicon GPU), 'gpu' (CUDA), or 'cpu'
+device = sys.argv[1].lower() if len(sys.argv) > 1 else ('mlx' if dezero.mlx.gpu_enable else ('gpu' if dezero.cuda.gpu_enable else 'cpu'))
+if device == 'mlx' and dezero.mlx.gpu_enable:
+    train_loader.to_mlx()
+    model.to_mlx()
+elif device == 'gpu' and dezero.cuda.gpu_enable:
     train_loader.to_gpu()
     model.to_gpu()
 

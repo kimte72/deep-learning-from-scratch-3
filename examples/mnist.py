@@ -20,7 +20,12 @@ model = MLP((hidden_size, hidden_size, 10), activation=F.relu)
 optimizer = dezero.optimizers.Adam().setup(model)
 optimizer.add_hook(dezero.optimizers.WeightDecay(1e-4))  # Weight decay
 
-if dezero.cuda.gpu_enable:
+device = sys.argv[1].lower() if len(sys.argv) > 1 else ('mlx' if dezero.mlx.gpu_enable else ('gpu' if dezero.cuda.gpu_enable else 'cpu'))
+if device == 'mlx' and dezero.mlx.gpu_enable:
+    train_loader.to_mlx()
+    test_loader.to_mlx()
+    model.to_mlx()
+elif device == 'gpu' and dezero.cuda.gpu_enable:
     train_loader.to_gpu()
     test_loader.to_gpu()
     model.to_gpu()
